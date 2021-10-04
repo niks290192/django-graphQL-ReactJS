@@ -6,6 +6,7 @@ from graphene import relay
 import graphql_jwt
 from graphql_jwt.decorators import login_required
 from graphene_django.filter import DjangoFilterConnectionField
+from graphql_relay import from_global_id
 
 
 class MovieType(DjangoObjectType):
@@ -22,23 +23,24 @@ class DirectorType(DjangoObjectType):
     class Meta:
         model = Director
 
+
 # Just for relay implementation
 
 class MovieNode(DjangoObjectType):
     class Meta:
         model = Movie
         filter_fields = {
-            'title': ['excat', 'icontains', 'isstartswith'],
+            'title': ['exact', 'icontains', 'istartswith'],
             'year': ['exact']
         }
-        interfaces = (relay.Node, )
+        interfaces = (relay.Node,)
 
 
 class Query(graphene.ObjectType):
-    #all_movies = graphene.List(MovieType)
+    # all_movies = graphene.List(MovieType)
     all_movies = DjangoFilterConnectionField(MovieNode)
 
-    #movie = graphene.Field(MovieType, id=graphene.Int(), title=graphene.String())
+    # movie = graphene.Field(MovieType, id=graphene.Int(), title=graphene.String())
     movie = relay.Node.Field(MovieNode)
 
     all_directors = graphene.List(DirectorType)
@@ -99,6 +101,24 @@ class MovieUpdateMutation(graphene.Mutation):
         return MovieUpdateMutation(movie=movie)
 
 
+class MovieUpdateMutationRelay(relay.ClientIDMutation):
+    class Input:
+        title = graphene.String()
+        year = graphene.Int()
+        id = graphene.ID(required=True)
+
+    movie = graphene.Field(MovieType)
+
+    @classmethod
+    def mutate_and_get_payload(cls, root, info, id, title):
+        movie = Movie.objects.get(pk=from_global_id(id)[1])
+        if title is not None:
+            movie.title = title
+        movie.save()
+
+        return MovieUpdateMutationRelay(movie=movie)
+
+
 class MovieDeleteMutation(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
@@ -119,4 +139,5 @@ class Mutation:
 
     create_movie = MovieCreateMutation.Field()
     update_movie = MovieUpdateMutation.Field()
+    update_movie_relay = MovieUpdateMutationRelay.Field()
     delete_movie = MovieDeleteMutation.Field()
